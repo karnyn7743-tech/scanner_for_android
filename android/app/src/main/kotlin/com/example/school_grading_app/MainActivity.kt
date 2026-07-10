@@ -1,4 +1,4 @@
-package com.example.school_grading_app
+package com.example.scanner_for_android
 
 import io.flutter.embedding.android.FlutterActivity
 
