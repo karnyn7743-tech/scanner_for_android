@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart' as painting; // حل تعارض حدود التصميم مع مكتبة الإكسيل
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' as px;
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -51,18 +52,14 @@ class _MainScreenState extends State<MainScreen> {
   bool _isScanningActive = false;
   bool _isTorchOn = false;
 
-  // متغبرات خيارات الضبط والتحكم الذكي
-  bool _isLocalSaveEnabled = true;       // الحفظ المؤقت أولاً ثم التصدير
-  bool _isOcrEnabled = true;             // التعرف على الكتابة اليدوية OCR
-  bool _isIndicEnhanceEnabled = true;    // تحسين اكتشاف الأرقام العربية-الهندية
-  bool _isRedPenEnhanceEnabled = false;   // تحسين لقراءة المكتوب بقلم أحمر
+  bool _isLocalSaveEnabled = true;       
+  bool _isOcrEnabled = true;             
+  bool _isIndicEnhanceEnabled = true;    
+  bool _isRedPenEnhanceEnabled = false;   
 
-  // ذاكرة مؤقتة لحفظ الدرجات المرصودة (الرقم السري -> الدرجة)
   final Map<String, String> _tempGradesCache = {};
-
   final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
-  // دالة تحويل الأرقام الهندية/المشرقية إلى أرقام إنجليزية برمجية
   String _convertArabicIndicToEnglish(String input) {
     const hindiDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
     const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -103,12 +100,13 @@ class _MainScreenState extends State<MainScreen> {
         String firstSheet = excel.tables.keys.first;
         var sheet = excel.tables[firstSheet];
 
+        // تم إصلاح السطر أدناه من maxCols إلى maxColumns لحل الخطأ التجميعي
         if (sheet != null && sheet.maxColumns > 0) {
           var firstRow = sheet.rows.first; 
           List<String> tempSubjects = [];
 
-          int startColumn = 4;  // عمود E
-          int endColumn = 18;  // عمود S
+          int startColumn = 4;  
+          int endColumn = 18;  
 
           for (int i = startColumn; i <= endColumn; i++) {
             if (i < firstRow.length) {
@@ -151,7 +149,6 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  // دالة التصدير النهائي وحفظ البيانات الممسوحة داخل ملف الإكسيل الأصلي
   Future<void> _saveAndExportToExcel() async {
     if (_selectedFilePath == null || _selectedSubject == null || _tempGradesCache.isEmpty) {
       _showSnackBar("لا توجد بيانات ممسوحة جديدة لحفظها حالياً!");
@@ -172,7 +169,6 @@ class _MainScreenState extends State<MainScreen> {
         var firstRow = sheet.rows.first;
         int targetColumnIndex = -1;
 
-        // البحث عن العمود الخاص بالمادة المختارة
         for (int i = 0; i < firstRow.length; i++) {
           if (firstRow[i]?.value?.toString().trim() == _selectedSubject) {
             targetColumnIndex = i;
@@ -186,8 +182,6 @@ class _MainScreenState extends State<MainScreen> {
         }
 
         int updatedCount = 0;
-        // المرور على الصفوف لإسقاط الدرجات بناءً على تطابق الرقم السري
-        // نفترض أن الرقم السري للطالب موجود في العمود الثاني (Index 1) أو الثالث (Index 2) حسب تنسيق الكنترول الخاص بك
         for (int rowIdx = 1; rowIdx < sheet.maxRows; rowIdx++) {
           var row = sheet.rows[rowIdx];
           var secretIdCell = row.length > 2 ? row[2]?.value?.toString().trim() : row[1]?.value?.toString().trim();
@@ -195,7 +189,6 @@ class _MainScreenState extends State<MainScreen> {
           if (secretIdCell != null && _tempGradesCache.containsKey(secretIdCell)) {
             String gradeToPut = _tempGradesCache[secretIdCell]!;
             
-            // تحديث الخلية بالدرجة الجديدة
             sheet.updateCell(
               px.CellIndex.indexByColumnRow(columnIndex: targetColumnIndex, rowIndex: rowIdx),
               px.CellValue.withValue(gradeToPut),
@@ -204,7 +197,6 @@ class _MainScreenState extends State<MainScreen> {
           }
         }
 
-        // حفظ التعديلات على الملف الأصلي
         var fileBytes = excel.save();
         if (fileBytes != null) {
           File(_selectedFilePath!)
@@ -213,7 +205,7 @@ class _MainScreenState extends State<MainScreen> {
           
           _showSnackBar("🎉 تم حفظ وتعديل الملف بنجاح! تم رصد $updatedCount طلاب.");
           setState(() {
-            _tempGradesCache.clear(); // تفريغ الكاش بعد التصدير الناجح
+            _tempGradesCache.clear(); 
           });
         }
       }
@@ -253,7 +245,6 @@ class _MainScreenState extends State<MainScreen> {
       String detectedSubjectCode = "";
       String detectedGrade = "";
 
-      // تفعيل الفحص اليدوي وعمليات التحسين فقط إذا كان الخيار نشطاً
       if (_isOcrEnabled && capture.image != null) {
         final InputImage inputImage = InputImage.fromBytes(
           bytes: capture.image!,
@@ -275,7 +266,6 @@ class _MainScreenState extends State<MainScreen> {
               if (lineText.contains("المادة") || lineText.contains("كود") || (lineText.length == 3 && RegExp(r'^\d+$').hasMatch(_extractDigits(lineText)))) {
                 detectedSubjectCode = _extractDigits(lineText);
               } else {
-                // تفعيل ميزة تحسين واكتشاف الأرقام العربية-الهندية وتحويلها تلقائياً عند القراءة
                 String numbersOnly = _isIndicEnhanceEnabled ? _extractDigits(lineText) : lineText.replaceAll(RegExp(r'[^0-9]'), '');
                 if (numbersOnly.isNotEmpty && numbersOnly.length <= 3) {
                   detectedGrade = numbersOnly;
@@ -297,14 +287,12 @@ class _MainScreenState extends State<MainScreen> {
         }
       }
 
-      // آلية الحفظ الذكي (مؤقت بالذاكرة أو رصد فوري بالواجهة)
       setState(() {
         _secretIdResult = qrValue;
         if (detectedGrade.isNotEmpty) {
           _gradeController.text = detectedGrade;
         }
         
-        // إذا تم تفعيل الحفظ المؤقت، نحفظها في الكاش ونحدث العداد مباشرة
         if (_isLocalSaveEnabled) {
           if (!_tempGradesCache.containsKey(qrValue)) {
             _tempGradesCache[qrValue] = _gradeController.text;
@@ -321,7 +309,6 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  // نافذة خيارات الضبط المنبثقة المتطابقة مع التصميم المطلوب
   void _showSettingsDialog() {
     showDialog(
       context: context,
@@ -427,7 +414,7 @@ class _MainScreenState extends State<MainScreen> {
         backgroundColor: primaryPurple,
         leading: IconButton(
           icon: const Icon(Icons.settings, color: Colors.white),
-          onPressed: _showSettingsDialog, // فتح نافذة الخيارات عند الضغط عليه
+          onPressed: _showSettingsDialog, 
         ),
         actions: [
           IconButton(
@@ -583,7 +570,8 @@ class _MainScreenState extends State<MainScreen> {
                         decoration: BoxDecoration(
                           color: fieldColor,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade700),
+                          // تم استخدام التوجيه الصريح هنا لحل مشكلة تعارض الاستدعاء لـ Border
+                          border: painting.Border.all(color: Colors.grey.shade700, width: 1),
                         ),
                         child: Text(
                           "$_gradedStudents / $_totalStudents",
@@ -614,7 +602,6 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            // تفعيل الزر ديناميكياً ليقوم بالتصدير النهائي الآمن للإكسيل
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blueAccent,
@@ -634,7 +621,7 @@ class _MainScreenState extends State<MainScreen> {
               decoration: BoxDecoration(
                 color: Colors.black,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _isScanningActive ? Colors.greenAccent : Colors.grey, width: 2),
+                border: painting.Border.all(color: _isScanningActive ? Colors.greenAccent : Colors.grey, width: 2),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
